@@ -1,17 +1,36 @@
 version: '3.8'
 
 services:
-  server:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - server1
+      - server2
+      - server3
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  server1: &server-template
     build:
       context: .
     environment:
       NODE_ENV: production
-      REDIS_HOST: redis-stack
-      REDIS_PORT: 6379
-      # Add Kafka connection info
-      KAFKA_BROKER: kafka:9093
-    ports:
-      - 8000:8000
+      REDIS_URL: redis://redis-stack:6379
+      KAFKA_BROKERS: kafka:9093
+      SERVER_ID: "1"
+      CORS_ORIGIN: "http://localhost:3000"
+      PORT: 8000
+    expose:
+      - "8000"
     depends_on:
       kafka:
         condition: service_healthy
@@ -19,6 +38,37 @@ services:
         condition: service_healthy
     networks:
       - app-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  server2:
+    <<: *server-template
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis-stack:6379
+      KAFKA_BROKERS: kafka:9093
+      SERVER_ID: "2"
+      CORS_ORIGIN: "http://localhost:3000"
+      PORT: 8000
+
+  server3:
+    <<: *server-template
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis-stack:6379
+      KAFKA_BROKERS: kafka:9093
+      SERVER_ID: "3"
+      CORS_ORIGIN: "http://localhost:3000"
+      PORT: 8000
 
   zookeeper:
     image: zookeeper:latest
